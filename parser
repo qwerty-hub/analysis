@@ -1,13 +1,8 @@
 import requests_html
 import sqlite3
 from bs4 import BeautifulSoup
-import pickle
-import requests
 
-
-
-
-
+#...на всякий случай вдруг пригодится
 class Proxy(object):
     def __init__(self, address, port, country, speed, delay):
         self.address = address
@@ -16,33 +11,35 @@ class Proxy(object):
         self.speed = speed
         self.delay = delay
 
+#...создание базы данных Sqlite
+#...!добавить недостающие атрибуты
 def createDb():
     connection = sqlite3.connect('proxy.db')
     cursor = connection.cursor()
-    # добавить атрибуты
     cursor.execute('''CREATE TABLE IF NOT EXISTS ProxyList
                     (Address TEXT UNIQUE, Port TEXT)''')
     connection.commit()
     connection.close()
 
+#...вывод существующей базы данны
 def printDb():
     connection = sqlite3.connect('proxy.db')
     cursor = connection.cursor()
     records = cursor.execute("SELECT * FROM ProxyList")
-    print(cursor.fetchall())
+    print('|...Address...|...port.....|')
+    for elem in cursor.fetchall():
+        print(elem[0], '   ', elem[1])
     connection.commit()
     connection.close()
 
 
-
-
-def scrap_proxy():
+#...парсинг сайта https://free-proxy-list.net
+#на странице содержит 20 записей, которые обновляются каждые 10 минут
+def parsing_proxy1():
     connection = sqlite3.connect('proxy.db')
     cursor = connection.cursor()
     proxylist = list()
     session = requests_html.HTMLSession()
-    #..https://free-proxy-list.net/ proxy updates every 10 minutes
-    #на странице 20 записей
     r = session.get('https://free-proxy-list.net/')
     r.html.render()
     for i in range(1, 21):
@@ -53,57 +50,41 @@ def scrap_proxy():
     connection.commit()
     connection.close()
 
-createDb()
-scrap_proxy()
-printDb()
-'''
-StockList = list()
-SiteList = table.find('tbody').find_all('tr')
-con = psycopg2.connect(
-  database="analytics",
-  user="postgres",
-  password="031972",
-  host="127.0.0.1",
-  port="5432"
-)
-engine = create_engine('postgresql://postgres:031972@localhost:5432/analytics')
-metadata1 = MetaData()
-stocksDoxod = Table('DoxodStocks',metadata1,autoload=True, autoload_with=engine)
-mapper(StockDoxod, stocksDoxod)
-metadata1.create_all(engine)
-sm1 = orm.sessionmaker(bind=engine, autoflush=True, autocommit=False, expire_on_commit=True)
-session1 = orm.scoped_session(sm1)
-session1.flush()
-print(len(SiteList))
-for i in SiteList:
-    try:
-        session1.add(
-            StockDoxod(
-                    stock= re.sub(r'\s+', ' ', i.find_all('td')[1].text.replace("-",'0')),  #stock
-                    sector= re.sub(r'\s+', ' ', i.find_all('td')[2].text.replace("-",'0')),  #sector
-                    DCF = re.sub(r'\s+', ' ', i.find_all('td')[6].text.replace("-",'0')),  #dcf
-                    grow = re.sub(r'\s+', ' ', i.find_all('td')[8].text.replace("-",'0')),  #grow
-                    PE = re.sub(r'\s+', ' ', i.find_all('td')[9].text.replace("-",'0')),  #pe
-                    Strategy1 = re.sub(r'\s+', ' ', i.find_all('td')[10].text.replace("-",'0')), #strategy1
-                    PBV = re.sub(r'\s+', ' ', i.find_all('td')[12].text.replace("-",'0')), #pbv
-                    ROE = re.sub(r'\s+', ' ', i.find_all('td')[13].text.replace("-",'0')), #roe
-                    Strategy2 = re.sub(r'\s+', ' ', i.find_all('td')[14].text.replace("-",'0')), #strategy2
-                    EVEBIT = re.sub(r'\s+', ' ', i.find_all('td')[16].text.replace("-",'0')), #evebit
-                    ROCE = re.sub(r'\s+', ' ', i.find_all('td')[17].text.replace("-",'0')), #roce
-                    Strategy3 = re.sub(r'\s+', ' ', i.find_all('td')[18].text.replace("-",'0')), #strategy3
-                    Yield = re.sub(r'\s+', ' ', i.find_all('td')[20].text.replace("-",'0')), #yield
-                    DSI = re.sub(r'\s+', ' ', i.find_all('td')[21].text.replace("-",'0')), #dsi
-                    Strategy4 = re.sub(r'\s+', ' ', i.find_all('td')[22].text.replace("-",'0')), #strategy4
-                    Why = re.sub(r'\s+', ' ', i.find_all('td')[23].text.replace("-",'0')), #why
-                    id =  re.sub(r'\s+', ' ', i.find_all('td')[25].text.replace("-",'0'))
-            )
-        )
+#...парсинг сайта http://foxtools.ru
+#содержит 3 страницы ссылка на страницу http://foxtools.ru/Proxy?page='номер страницы'
+def parsing_proxy2():
+    connection = sqlite3.connect('proxy.db')
+    cursor = connection.cursor()
+    proxylist = list()
+    session = requests_html.HTMLSession()
+    for i in ['1','2','3']:
+        print(i)
+        r = session.get('http://foxtools.ru/Proxy?page='+i)
+        soup = BeautifulSoup(r.text, 'lxml')
+        line = soup.find('table', id='theProxyList').find('tbody').find_all('tr')
+        for tr in line:
+            td = tr.find_all('td')
+            address = td[1].text
+            port = td[2].text
+            proxylist.append([address,port])
+    cursor.executemany("INSERT INTO ProxyList (Address, port) VALUES (?, ?)", proxylist)
+    connection.commit()
+    connection.close()
 
-    except exc.SQLAlchemyError:
-        pass
-    try:
-        session1.commit()
-    except sqlalchemy.exc.IntegrityError:
-        pass
-session1.close()
-'''
+    #...парсинг сайта https://spys.one/en/free-proxy-list/
+#имеет несколько разделов с прокси
+#стандартно отображает 30 записей, на сайте можно выбрать 500
+#...?как сделать загрузку сайта с 500 записями
+
+
+#парсинг сайта https://awmproxy.net/
+#доступ по captcha
+#содержит 8057 прокси
+#пробуем сохранять сайт в ручную и потом парсить
+
+
+
+#createDb()
+#parsing_proxy1()
+#parsing_proxy2()
+#printDb()
