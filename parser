@@ -1,6 +1,7 @@
 import requests_html
 import sqlite3
 from bs4 import BeautifulSoup
+import urllib.request
 
 #...на всякий случай вдруг пригодится
 class Proxy(object):
@@ -17,21 +18,32 @@ def createDb():
     connection = sqlite3.connect('proxy.db')
     cursor = connection.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS ProxyList
-                    (Address TEXT UNIQUE, Port TEXT)''')
+                    (Address TEXT UNIQUE, Port TEXT, Available TEXT DEFAULT('NO'))''')
     connection.commit()
     connection.close()
+
+
 
 #...вывод существующей базы данны
 def printDb():
     connection = sqlite3.connect('proxy.db')
     cursor = connection.cursor()
     records = cursor.execute("SELECT * FROM ProxyList")
-    print('|...Address...|...port.....|')
+    print('|...Address...|...port.....|...Available...|')
     for elem in cursor.fetchall():
-        print(elem[0], '   ', elem[1])
+        print(elem[0], '   ', elem[1], '   ', elem[2])
     connection.commit()
     connection.close()
 
+#...вывод прокси с проверкой
+def printProxy():
+    connection = sqlite3.connect('proxy.db')
+    cursor = connection.cursor()
+    records = cursor.execute("SELECT * FROM ProxyList")
+    for elem in cursor.fetchall():
+        proxychecker(elem[0]+':'+elem[1])
+    connection.commit()
+    connection.close()
 
 #...парсинг сайта https://free-proxy-list.net
 #на странице содержит 20 записей, которые обновляются каждые 10 минут
@@ -41,13 +53,16 @@ def parsing_proxy1():
     proxylist = list()
     session = requests_html.HTMLSession()
     r = session.get('https://free-proxy-list.net/')
-    r.html.render()
+    r.html.render(timeout=20) # timeout=20 базово стоит 8, перестало хватать
     for i in range(1, 21):
         address = r.html.xpath('/html/body/section[1]/div/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[1]/text()'.format(i))[0]
         port = r.html.xpath('/html/body/section[1]/div/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[2]/text()'.format(i))[0]
         proxylist.append([address,port])
-    cursor.executemany("INSERT INTO ProxyList (Address, port) VALUES (?, ?)", proxylist)
-    connection.commit()
+    try:
+        cursor.executemany("INSERT INTO ProxyList (Address, port) VALUES (?, ?)", proxylist)
+        connection.commit()
+    except Exception as e:
+        print(e)
     connection.close()
 
 #...парсинг сайта http://foxtools.ru
@@ -70,7 +85,7 @@ def parsing_proxy2():
     connection.commit()
     connection.close()
 
-    #...парсинг сайта https://spys.one/en/free-proxy-list/
+#...парсинг сайта https://spys.one/en/free-proxy-list/
 #имеет несколько разделов с прокси
 #стандартно отображает 30 записей, на сайте можно выбрать 500
 #...?как сделать загрузку сайта с 500 записями
@@ -84,7 +99,8 @@ def parsing_proxy3():
     soup = BeautifulSoup(r.text, 'lxml')
     line = soup.find('body').find_all('table')[1].find_all('tr')[3].find('table').find_all('tr')
     print(line[2].find_all('td')[0].find('font').text)
-    print(line[2])
+    print(line[2].find_all('td')[0])
+
     '''
     for i in range[1:16]:
         line[2*i].find_all('td')[1].find('font')
@@ -100,11 +116,51 @@ def parsing_proxy3():
 #доступ по captcha
 #содержит 8057 прокси
 #пробуем сохранять сайт в ручную и потом парсить
+def parsing_proxy4():
+    connection = sqlite3.connect('proxy.db')
+    cursor = connection.cursor()
+    proxylist = list()
+    session = requests_html.HTMLSession()
+    r = session.get('C://Users/Egor/Desktop/python/analysis/1.html')
+    soup = BeautifulSoup(r.text, 'lxml')
+    #line = soup.find('body').find_all('table')[1].find_all('tr')[3].find('table').find_all('tr')
+    #print(line[2].find_all('td')[0].find('font').text)
+    #print(line[2].find_all('td')[0])
 
 
+
+#...проверяет прокси из бд, результат записывает в бд
+def proxyCheck():
+    connection = sqlite3.connect('proxy.db')
+    cursor = connection.cursor()
+    records = cursor.execute("SELECT * FROM ProxyList")
+    list= cursor.fetchall()
+    for elem in list:
+        if proxychecker(elem[0]+':'+elem[1]):
+            cursor.execute("""Update ProxyList set Available = 'YES' where Address = ?""",(elem[0],  ))
+            connection.commit()
+    connection.close()
+
+#проверяет отдельно взятую прокси
+#пока просто с помощью прокси пробуем обратиться к сайту
+def proxychecker(i):
+    proxy = 'http://' + i
+    proxy_support = urllib.request.ProxyHandler({'http' : proxy})
+    opener = urllib.request.build_opener(proxy_support)
+    urllib.request.install_opener(opener)
+    req = urllib.request.Request(("http://www.google.com"))
+    #req.add_header("User-Agent", random.choice(useragents)) #имитация разных устройств
+    try:
+        urllib.request.urlopen(req, timeout=60)
+        return True
+    except:
+        return False
 
 #createDb()
 #parsing_proxy1()
 #parsing_proxy2()
-parsing_proxy3()
+#parsing_proxy3()
+#parsing_proxy4()
 #printDb()
+#printProxy()
+#proxyCheck()
